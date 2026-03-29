@@ -1,0 +1,15 @@
+[project]
+name = "lydian-gravity-fastapi"
+version = "0.1.0"
+description = "A FastAPI backend for generating harmonic suggestions based on Modal Harmony and the Lydian Chromatic Concept"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.135.2",
+    "pydantic-settings>=2.13.1",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.8",
+]

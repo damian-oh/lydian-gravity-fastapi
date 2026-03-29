@@ -1,0 +1,56 @@
+# --- Python Core ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- Environments & Packages ---
+# We ignore the environment, but NEVER the lock file (uv.lock)
+.venv/
+env/
+venv/
+ENV/
+
+# --- Secrets & Config ---
+.env
+.env.*
+!.env.example
+
+# --- Testing & Linting ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.noserc
+nosetests.xml
+coverage.xml
+
+# --- Database ---
+*.db
+*.sqlite3
+alembic/log/
+
+# --- IDE & OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
