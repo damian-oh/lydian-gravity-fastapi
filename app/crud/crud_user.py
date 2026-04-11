@@ -45,16 +45,25 @@ def create_user(
 def update_user(
     db: Session,
     db_user: User,
-    user_in: UserUpdate,
-    password_hash: str | None = None,
+    user_in: UserUpdate
 ) -> User:
-    update_data = user_in.model_dump(exclude_unset=True, exclude={"password"})
+    update_data = user_in.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
         setattr(db_user, field, value)
 
-    if password_hash is not None:
-        db_user.password_hash = password_hash
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    return db_user
+
+def update_user_password(
+    db: Session,
+    db_user: User,
+    password_hash: str
+) -> User:
+    db_user.password_hash = password_hash
 
     db.add(db_user)
     db.commit()

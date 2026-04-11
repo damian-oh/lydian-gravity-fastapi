@@ -7,9 +7,18 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=255)
 
+    model_config = ConfigDict(extra="forbid")
+
 class UserUpdate(BaseModel):
     email: str | None = Field(default=None, max_length=255)
-    password: str | None = Field(default=None, min_length=8, max_length=255)
+
+    model_config = ConfigDict(extra="forbid")
+
+class UserPasswordUpdate(BaseModel):
+    current_password: str = Field(min_length=8, max_length=255)
+    new_password: str = Field(min_length=8, max_length=255)
+
+    model_config = ConfigDict(extra="forbid")
 
 class UserRead(UserBase):
     id: int
