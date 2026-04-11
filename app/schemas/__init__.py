@@ -6,7 +6,7 @@ from app.schemas.melodic_note import (
 )
 from app.schemas.song_section import SongSectionCreate, SongSectionRead, SongSectionUpdate
 from app.schemas.song_sketch import SongSketchCreate, SongSketchRead, SongSketchUpdate
-from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.schemas.user import UserCreate, UserPasswordUpdate, UserRead, UserUpdate
 
 __all__ = [
     "ChordCreate",
@@ -22,6 +22,7 @@ __all__ = [
     "SongSketchRead",
     "SongSketchUpdate",
     "UserCreate",
+    "UserPasswordUpdate",
     "UserRead",
     "UserUpdate",
 ]
