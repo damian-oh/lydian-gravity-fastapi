@@ -24,6 +24,10 @@ app/
 └── schemas/                 # Pydantic schemas
 ```
 
+## Documentation
+
+- [Database schema](docs/database-schema.md)
+
 ## Getting Started
 
 ### Prerequisites
