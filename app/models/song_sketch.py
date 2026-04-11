@@ -4,7 +4,6 @@ from sqlalchemy.sql import func
 
 from app.db.base_class import Base
 
-
 class SongSketch(Base):
     __tablename__ = "song_sketches"
 

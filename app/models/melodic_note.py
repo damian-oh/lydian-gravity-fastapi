@@ -3,7 +3,6 @@ from sqlalchemy.orm import relationship
 
 from app.db.base_class import Base
 
-
 class MelodicNote(Base):
     __tablename__ = "melodic_notes"
 

@@ -1,6 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class MelodicNoteBase(BaseModel):
     pitch: int = Field(ge=0, le=127)
     start_beat: float = Field(ge=0)

@@ -1,6 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class ChordBase(BaseModel):
     order_index: int = Field(ge=0)
     root: str = Field(min_length=1, max_length=10)
