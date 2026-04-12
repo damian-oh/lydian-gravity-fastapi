@@ -54,3 +54,6 @@ alembic/log/
 .DS_Store
 Thumbs.db
 *.swp
+
+# --- Codex Local Settings ---
+.codex
