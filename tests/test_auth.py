@@ -94,6 +94,23 @@ async def test_register_stores_argon2_hash(client: AsyncClient) -> None:
         assert verify_password("correct-password", db_user.password_hash)
 
 
+async def test_cors_allows_local_frontend_origin(client: AsyncClient) -> None:
+    response = await client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Authorization,Content-Type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "POST" in response.headers["access-control-allow-methods"]
+    assert "Authorization" in response.headers["access-control-allow-headers"]
+    assert "Content-Type" in response.headers["access-control-allow-headers"]
+
+
 async def test_duplicate_register_returns_conflict(client: AsyncClient) -> None:
     assert (await register_user(client)).status_code == 201
 
