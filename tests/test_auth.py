@@ -111,6 +111,23 @@ async def test_cors_allows_local_frontend_origin(client: AsyncClient) -> None:
     assert "Content-Type" in response.headers["access-control-allow-headers"]
 
 
+async def test_cors_allows_arrangement_save_preflight(client: AsyncClient) -> None:
+    response = await client.options(
+        "/api/v1/songs/1/arrangement",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers": "Authorization,Content-Type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "PUT" in response.headers["access-control-allow-methods"]
+    assert "Authorization" in response.headers["access-control-allow-headers"]
+    assert "Content-Type" in response.headers["access-control-allow-headers"]
+
+
 async def test_duplicate_register_returns_conflict(client: AsyncClient) -> None:
     assert (await register_user(client)).status_code == 201
 
