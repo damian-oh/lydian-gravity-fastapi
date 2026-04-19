@@ -1,3 +1,5 @@
+import json
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -30,7 +32,9 @@ def create_chord(
     db: Session,
     chord_in: ChordCreate
 ) -> Chord:
-    db_chord = Chord(**chord_in.model_dump())
+    chord_data = chord_in.model_dump()
+    chord_data["notes"] = json.dumps(chord_data["notes"])
+    db_chord = Chord(**chord_data)
     db.add(db_chord)
     db.commit()
     db.refresh(db_chord)
@@ -43,6 +47,8 @@ def update_chord(
     chord_in: ChordUpdate
 ) -> Chord:
     update_data = chord_in.model_dump(exclude_unset=True)
+    if "notes" in update_data:
+        update_data["notes"] = json.dumps(update_data["notes"])
 
     for field, value in update_data.items():
         setattr(db_chord, field, value)

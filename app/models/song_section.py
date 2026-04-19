@@ -32,6 +32,12 @@ class SongSection(Base):
         nullable=False
     )
 
+    total_beats = Column(
+        Integer,
+        nullable=False,
+        default=16
+    )
+
     # Relationships
     song_sketch = relationship(
         "SongSketch",

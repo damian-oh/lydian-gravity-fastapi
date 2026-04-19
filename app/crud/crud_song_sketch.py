@@ -28,9 +28,13 @@ def get_song_sketches_by_user(
 
 def create_song_sketch(
     db: Session,
-    song_sketch_in: SongSketchCreate
+    song_sketch_in: SongSketchCreate,
+    user_id: int,
 ) -> SongSketch:
-    db_song_sketch = SongSketch(**song_sketch_in.model_dump())
+    db_song_sketch = SongSketch(
+        **song_sketch_in.model_dump(),
+        user_id=user_id,
+    )
     db.add(db_song_sketch)
     db.commit()
     db.refresh(db_song_sketch)
