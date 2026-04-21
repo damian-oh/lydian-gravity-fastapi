@@ -4,11 +4,10 @@ from sqlalchemy.orm import Session
 from app.models.song_section import SongSection
 from app.schemas.song_section import SongSectionCreate, SongSectionUpdate
 
-def get_song_section(
-    db: Session,
-    song_section_id: int
-) -> SongSection | None:
+
+def get_song_section(db: Session, song_section_id: int) -> SongSection | None:
     return db.get(SongSection, song_section_id)
+
 
 def get_song_sections_by_song_sketch(
     db: Session,
@@ -26,16 +25,15 @@ def get_song_sections_by_song_sketch(
 
     return list(db.scalars(stmt).all())
 
-def create_song_section(
-    db: Session,
-    song_section_in: SongSectionCreate
-) -> SongSection:
+
+def create_song_section(db: Session, song_section_in: SongSectionCreate) -> SongSection:
     db_song_section = SongSection(**song_section_in.model_dump())
     db.add(db_song_section)
     db.commit()
     db.refresh(db_song_section)
 
     return db_song_section
+
 
 def update_song_section(
     db: Session,
@@ -53,9 +51,7 @@ def update_song_section(
 
     return db_song_section
 
-def delete_song_section(
-    db: Session,
-    db_song_section: SongSection
-) -> None:
+
+def delete_song_section(db: Session, db_song_section: SongSection) -> None:
     db.delete(db_song_section)
     db.commit()

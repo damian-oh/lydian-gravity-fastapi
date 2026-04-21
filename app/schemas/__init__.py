@@ -5,7 +5,11 @@ from app.schemas.melodic_note import (
     MelodicNoteUpdate,
 )
 from app.schemas.msg import Msg
-from app.schemas.song_section import SongSectionCreate, SongSectionRead, SongSectionUpdate
+from app.schemas.song_section import (
+    SongSectionCreate,
+    SongSectionRead,
+    SongSectionUpdate,
+)
 from app.schemas.song_sketch import (
     SongArrangementReplace,
     SongRead,

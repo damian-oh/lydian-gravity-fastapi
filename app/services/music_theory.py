@@ -107,7 +107,11 @@ def normalize_semitone(value: int) -> int:
 
 
 def get_preferred_chromatic(tonal_center: str) -> tuple[str, ...]:
-    return FLAT_CHROMATIC if "b" in tonal_center or tonal_center in FLAT_PREFERRED_TONICS else SHARP_CHROMATIC
+    return (
+        FLAT_CHROMATIC
+        if "b" in tonal_center or tonal_center in FLAT_PREFERRED_TONICS
+        else SHARP_CHROMATIC
+    )
 
 
 def get_note_at_interval(tonal_center: str, semitone_offset: int) -> str:
@@ -160,7 +164,10 @@ def build_chord_notes(root: str, quality: str) -> tuple[str, ...]:
         "min7b5": (0, 3, 6, 10),
     }
 
-    return tuple(get_note_at_interval(root, interval) for interval in quality_intervals.get(quality, (0, 4, 7)))
+    return tuple(
+        get_note_at_interval(root, interval)
+        for interval in quality_intervals.get(quality, (0, 4, 7))
+    )
 
 
 def format_mode_label(mode: str) -> str:
@@ -210,7 +217,11 @@ def build_roman_numeral(root_offset: int, quality: str) -> str:
         "min7b5": "ø7",
     }.get(quality, "")
 
-    return f"{base.lower()}{suffix}" if quality in {"min7", "min7b5"} else f"{base}{suffix}"
+    return (
+        f"{base.lower()}{suffix}"
+        if quality in {"min7", "min7b5"}
+        else f"{base}{suffix}"
+    )
 
 
 def build_mode_seventh_chords(tonal_center: str, mode: str) -> list[BuiltChord]:
@@ -245,7 +256,9 @@ def build_secondary_dominant(target_chord: BuiltChord, tonal_center: str) -> Bui
 
     return BuiltChord(
         root=root,
-        root_offset=normalize_semitone(NOTE_TO_SEMITONE[root] - NOTE_TO_SEMITONE[tonal_center]),
+        root_offset=normalize_semitone(
+            NOTE_TO_SEMITONE[root] - NOTE_TO_SEMITONE[tonal_center]
+        ),
         quality="7",
         chord_name=f"{root}7",
         notes=build_chord_notes(root, "7"),
@@ -333,7 +346,11 @@ def generate_next_step_suggestions(
 
     return {
         "pitch_collection": pitch_collection,
-        "gravity_center": [tonal_center, get_note_at_interval(tonal_center, 7), get_note_at_interval(tonal_center, 2)],
+        "gravity_center": [
+            tonal_center,
+            get_note_at_interval(tonal_center, 7),
+            get_note_at_interval(tonal_center, 2),
+        ],
         "suggested_chords": [
             {
                 "id": suggestion.id,

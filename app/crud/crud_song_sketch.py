@@ -4,11 +4,10 @@ from sqlalchemy.orm import Session
 from app.models.song_sketch import SongSketch
 from app.schemas.song_sketch import SongSketchCreate, SongSketchUpdate
 
-def get_song_sketch(
-    db: Session,
-    song_sketch_id: int
-) -> SongSketch | None:
+
+def get_song_sketch(db: Session, song_sketch_id: int) -> SongSketch | None:
     return db.get(SongSketch, song_sketch_id)
+
 
 def get_song_sketches_by_user(
     db: Session,
@@ -26,6 +25,7 @@ def get_song_sketches_by_user(
 
     return list(db.scalars(stmt).all())
 
+
 def create_song_sketch(
     db: Session,
     song_sketch_in: SongSketchCreate,
@@ -40,6 +40,7 @@ def create_song_sketch(
     db.refresh(db_song_sketch)
 
     return db_song_sketch
+
 
 def update_song_sketch(
     db: Session,
@@ -57,9 +58,7 @@ def update_song_sketch(
 
     return db_song_sketch
 
-def delete_song_sketch(
-    db: Session,
-    db_song_sketch: SongSketch
-) -> None:
+
+def delete_song_sketch(db: Session, db_song_sketch: SongSketch) -> None:
     db.delete(db_song_sketch)
     db.commit()

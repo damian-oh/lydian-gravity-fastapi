@@ -16,11 +16,15 @@ def ensure_sqlite_schema_compatibility() -> None:
     if "song_sections" not in inspector.get_table_names():
         return
 
-    section_columns = {column["name"] for column in inspector.get_columns("song_sections")}
+    section_columns = {
+        column["name"] for column in inspector.get_columns("song_sections")
+    }
     if "total_beats" not in section_columns:
         with engine.begin() as connection:
             connection.execute(
-                text("ALTER TABLE song_sections ADD COLUMN total_beats INTEGER NOT NULL DEFAULT 16")
+                text(
+                    "ALTER TABLE song_sections ADD COLUMN total_beats INTEGER NOT NULL DEFAULT 16"
+                )
             )
 
 
@@ -30,11 +34,8 @@ async def lifespan(app: FastAPI):
     ensure_sqlite_schema_compatibility()
     yield
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    debug=settings.DEBUG,
-    lifespan=lifespan
-)
+
+app = FastAPI(title=settings.PROJECT_NAME, debug=settings.DEBUG, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

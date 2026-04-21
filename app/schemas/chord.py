@@ -2,7 +2,12 @@ import json
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.services.music_theory import is_valid_chord_quality, is_valid_mode, is_valid_note
+from app.services.music_theory import (
+    is_valid_chord_quality,
+    is_valid_mode,
+    is_valid_note,
+)
+
 
 class ChordBase(BaseModel):
     order_index: int = Field(ge=0)
@@ -58,8 +63,10 @@ class ChordBase(BaseModel):
 
         return value
 
+
 class ChordCreate(ChordBase):
     section_id: int = Field(gt=0)
+
 
 class ChordUpdate(BaseModel):
     order_index: int | None = Field(default=None, ge=0)
@@ -70,6 +77,7 @@ class ChordUpdate(BaseModel):
     start_beat: float | None = Field(default=None, ge=0)
     duration_beats: float | None = Field(default=None, gt=0)
     parent_mode: str | None = Field(default=None, min_length=1, max_length=20)
+
 
 class ChordRead(ChordBase):
     id: int

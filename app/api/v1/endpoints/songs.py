@@ -52,7 +52,9 @@ def parse_chord_notes(notes: str) -> list[str]:
 
 
 def build_song_response(song: SongSketch) -> SongRead:
-    sections = sorted(song.song_sections, key=lambda section: (section.order_index, section.id))
+    sections = sorted(
+        song.song_sections, key=lambda section: (section.order_index, section.id)
+    )
 
     return SongRead(
         id=song.id,
@@ -86,7 +88,9 @@ def build_song_response(song: SongSketch) -> SongRead:
                         duration_beats=chord.duration_beats,
                         parent_mode=chord.parent_mode,
                     )
-                    for chord in sorted(section.chords, key=lambda item: (item.order_index, item.id))
+                    for chord in sorted(
+                        section.chords, key=lambda item: (item.order_index, item.id)
+                    )
                 ],
                 melodic_notes=[
                     MelodicNoteRead.model_validate(note)

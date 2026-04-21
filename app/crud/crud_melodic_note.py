@@ -4,11 +4,10 @@ from sqlalchemy.orm import Session
 from app.models.melodic_note import MelodicNote
 from app.schemas.melodic_note import MelodicNoteCreate, MelodicNoteUpdate
 
-def get_melodic_note(
-    db: Session,
-    melodic_note_id: int
-) -> MelodicNote | None:
+
+def get_melodic_note(db: Session, melodic_note_id: int) -> MelodicNote | None:
     return db.get(MelodicNote, melodic_note_id)
+
 
 def get_melodic_notes_by_section(
     db: Session,
@@ -26,16 +25,15 @@ def get_melodic_notes_by_section(
 
     return list(db.scalars(stmt).all())
 
-def create_melodic_note(
-    db: Session,
-    melodic_note_in: MelodicNoteCreate
-) -> MelodicNote:
+
+def create_melodic_note(db: Session, melodic_note_in: MelodicNoteCreate) -> MelodicNote:
     db_melodic_note = MelodicNote(**melodic_note_in.model_dump())
     db.add(db_melodic_note)
     db.commit()
     db.refresh(db_melodic_note)
 
     return db_melodic_note
+
 
 def update_melodic_note(
     db: Session,
@@ -53,9 +51,7 @@ def update_melodic_note(
 
     return db_melodic_note
 
-def delete_melodic_note(
-    db: Session,
-    db_melodic_note: MelodicNote
-) -> None:
+
+def delete_melodic_note(db: Session, db_melodic_note: MelodicNote) -> None:
     db.delete(db_melodic_note)
     db.commit()

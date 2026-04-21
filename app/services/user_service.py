@@ -17,9 +17,7 @@ def create_user(db: Session, user_in: UserCreate) -> User:
 
 
 def change_user_password(
-    db: Session,
-    db_user: User,
-    password_in: UserPasswordUpdate
+    db: Session, db_user: User, password_in: UserPasswordUpdate
 ) -> User:
     if not verify_password(password_in.current_password, db_user.password_hash):
         raise ValueError("Current password is incorrect.")
@@ -29,11 +27,7 @@ def change_user_password(
     return crud_user.update_user_password(db, db_user, new_password_hash)
 
 
-def authenticate_user(
-    db: Session,
-    email: str,
-    password: str
-) -> User | None:
+def authenticate_user(db: Session, email: str, password: str) -> User | None:
     db_user = crud_user.get_user_by_email(db, email)
 
     if db_user is None:

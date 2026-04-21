@@ -6,6 +6,7 @@ from app.schemas.melodic_note import MelodicNoteBase, MelodicNoteRead
 from app.schemas.song_section import SongSectionBase, SongSectionRead
 from app.services.music_theory import is_valid_mode, is_valid_note
 
+
 class SongSketchBase(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     master_tonal_center: str = Field(min_length=1, max_length=10)
@@ -30,8 +31,10 @@ class SongSketchBase(BaseModel):
 
         return value
 
+
 class SongSketchCreate(SongSketchBase):
     pass
+
 
 class SongSketchUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
@@ -60,6 +63,7 @@ class SongSketchUpdate(BaseModel):
             raise ValueError("Master mode must be supported.")
 
         return value
+
 
 class SongSketchRead(SongSketchBase):
     id: int

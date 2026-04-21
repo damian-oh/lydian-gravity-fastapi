@@ -11,8 +11,12 @@ async def create_authenticated_user(
     email: str = "songwriter@example.com",
     password: str = "correct-password",
 ) -> dict[str, str]:
-    assert (await register_user(client, email=email, password=password)).status_code == 201
-    token = (await login_user(client, email=email, password=password)).json()["access_token"]
+    assert (
+        await register_user(client, email=email, password=password)
+    ).status_code == 201
+    token = (await login_user(client, email=email, password=password)).json()[
+        "access_token"
+    ]
 
     return auth_headers(token)
 
@@ -47,7 +51,9 @@ async def test_song_crud_and_library_summary(client: AsyncClient) -> None:
         headers=headers,
         json={"title": "Updated Sketch"},
     )
-    delete_response = await client.delete(f"/api/v1/songs/{song['id']}", headers=headers)
+    delete_response = await client.delete(
+        f"/api/v1/songs/{song['id']}", headers=headers
+    )
     missing_response = await client.get(f"/api/v1/songs/{song['id']}", headers=headers)
 
     assert list_response.status_code == 200
@@ -125,7 +131,9 @@ async def test_song_routes_are_user_scoped(client: AsyncClient) -> None:
     assert response.status_code == 404
 
 
-async def test_song_validation_rejects_invalid_music_inputs(client: AsyncClient) -> None:
+async def test_song_validation_rejects_invalid_music_inputs(
+    client: AsyncClient,
+) -> None:
     headers = await create_authenticated_user(client)
     invalid_song_response = await client.post(
         "/api/v1/songs",
