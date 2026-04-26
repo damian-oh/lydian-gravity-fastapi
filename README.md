@@ -1,42 +1,83 @@
 # Lydian Gravity FastAPI
 
-FastAPI backend for Lydian Gravity, a songwriting assistant that generates harmonic suggestions based on Modal Harmony and George Russell's Lydian Chromatic Concept.
+Backend API for **Lydian Gravity**, a full-stack songwriting workspace for
+building modal song sketches, saving arrangements, and surfacing harmonic
+next-step ideas inspired by modal harmony and George Russell's Lydian Chromatic
+Concept.
+
+This repository powers authentication, persistence, and theory suggestion APIs
+for the companion Next.js client:
+[lydian-gravity-web](https://github.com/damian-oh/lydian-gravity-web).
+
+## Project Highlights
+
+- **Authenticated songwriting workspace:** Register, log in, update account
+  details, and protect every saved sketch behind JWT bearer auth.
+- **User-scoped song library:** Store song metadata such as title, tonal center,
+  mode, tempo, time signature, and notes for each user.
+- **Nested arrangement persistence:** Save complete section arrangements with
+  ordered sections, chords, beat positions, durations, and melody notes.
+- **Deterministic theory engine:** Generate next-step harmonic suggestions,
+  pitch collections, gravity-center cues, melody prompts, rhythmic prompts, and
+  modal-interchange insights.
+- **Production-minded API shape:** Versioned `/api/v1` routes, typed Pydantic
+  schemas, SQLAlchemy models, CORS configuration, health checks, and OpenAPI
+  docs.
 
 ## Tech Stack
 
-- **Runtime:** Python 3.13+
-- **API:** FastAPI
-- **Database:** SQLite via SQLAlchemy
-- **Package manager:** uv
-- **Frontend:** Next.js app in a separate repository
+| Layer | Choice |
+| --- | --- |
+| Runtime | Python 3.13+ |
+| API | FastAPI |
+| Data | SQLite, SQLAlchemy |
+| Auth | JWT bearer tokens, Argon2 password hashing |
+| Validation | Pydantic |
+| Tooling | uv, pytest, Ruff |
 
-## Project Structure
+## API Surface
+
+The API is mounted under `/api/v1` by default.
+
+| Area | Routes | Purpose |
+| --- | --- | --- |
+| Health | `GET /health` | Deployment and uptime check |
+| Auth | `POST /auth/register`, `POST /auth/login` | Account creation and token login |
+| Users | `GET /users/me`, `PATCH /users/me`, `POST /users/me/password` | Profile and password management |
+| Songs | `GET /songs`, `POST /songs`, `GET /songs/{id}`, `PATCH /songs/{id}`, `DELETE /songs/{id}` | User-scoped song library CRUD |
+| Arrangements | `PUT /songs/{id}/arrangement` | Replace a saved arrangement with nested sections, chords, and melody notes |
+| Suggestions | `POST /suggestions/next-steps` | Return harmonic and melodic next-step guidance for the active section |
+
+OpenAPI documentation is available at `/docs` when the service is running.
+
+## Architecture
 
 ```text
 app/
-├── main.py                  # FastAPI application entry point
-├── api/v1/
-│   ├── api.py               # v1 router configuration
-│   └── endpoints/           # auth, health, songs, suggestions, users
-├── core/                    # Settings and security utilities
-├── crud/                    # Data access logic
-├── db/                      # Database setup
-├── models/                  # SQLAlchemy models
-├── schemas/                 # Pydantic schemas
-└── services/                # Domain logic
+|-- main.py                  # FastAPI app, lifespan setup, CORS, routers
+|-- api/                     # Dependencies and versioned route registration
+|-- api/v1/endpoints/        # auth, health, songs, suggestions, users
+|-- core/                    # Settings and security utilities
+|-- crud/                    # SQLAlchemy data-access functions
+|-- db/                      # Engine/session setup and declarative base
+|-- models/                  # SQLAlchemy tables
+|-- schemas/                 # Pydantic request/response contracts
+`-- services/                # Domain logic for users and music theory
 ```
 
-## Documentation
+The database is intentionally small and explicit: users own song sketches, song
+sketches own sections, and sections own chords plus melodic notes. Foreign keys
+cascade on delete so removing a user or sketch removes its nested data.
 
-- [Database schema](docs/database-schema.md)
-- OpenAPI docs are available at `/docs` when the app is running.
+For a deeper look at the persistence model, see
+[docs/database-schema.md](docs/database-schema.md).
 
 ## Local Development
 
-### Prerequisites
+### Requirements
 
 - Python 3.13+
-- uv
+- [uv](https://docs.astral.sh/uv/)
 
 ### Install
 
@@ -45,7 +86,8 @@ uv sync
 cp .env.example .env
 ```
 
-Update `.env` for your local database and frontend origin. The default development API base path is `/api/v1`.
+Update `.env` for your local database path, secret key, and frontend origin.
+The default local API base path is `/api/v1`.
 
 ### Run
 
@@ -53,88 +95,80 @@ Update `.env` for your local database and frontend origin. The default developme
 uv run fastapi dev app/main.py
 ```
 
-The local API will be available at:
+Useful local URLs:
 
-- Root: `http://127.0.0.1:8000/`
+- API root: `http://127.0.0.1:8000/`
 - Health check: `http://127.0.0.1:8000/api/v1/health`
 - OpenAPI docs: `http://127.0.0.1:8000/docs`
 
-### Verify
+## Configuration
+
+The app reads settings from environment variables and, in local development,
+from `.env`.
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `PROJECT_NAME` | Yes | API display name used by FastAPI docs |
+| `DEBUG` | No | Set to `False` outside local development |
+| `API_V1_STR` | No | Defaults to `/api/v1` |
+| `DATABASE_URL` | Yes | SQLite URL, for example `sqlite:///./lydian_gravity.db` |
+| `SECRET_KEY` | Yes | Generate a unique value with `openssl rand -hex 32` |
+| `ALGORITHM` | No | Defaults to `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Defaults to `30` |
+| `BACKEND_CORS_ORIGINS` | No | JSON array of allowed frontend origins |
+
+Example local configuration:
+
+```bash
+PROJECT_NAME="Lydian Gravity FastAPI"
+DEBUG=True
+API_V1_STR="/api/v1"
+DATABASE_URL="sqlite:///./lydian_gravity.db"
+SECRET_KEY="replace-with-openssl-rand-hex-32"
+ALGORITHM="HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+BACKEND_CORS_ORIGINS='["http://localhost:3000","http://127.0.0.1:3000"]'
+```
+
+## Quality Checks
 
 ```bash
 uv run pytest
 uv run ruff check .
 ```
 
-## Configuration
+The test suite covers authentication, token rejection cases, CORS preflight
+behavior, user-scoped song access, nested arrangement saves, input validation,
+and deterministic suggestion responses.
 
-The app reads settings from environment variables and, for local development, from `.env`.
+## Deployment Notes
 
-| Variable | Required | Production guidance |
-| --- | --- | --- |
-| `PROJECT_NAME` | Yes | Human-readable API name. |
-| `DEBUG` | No | Set to `False` in production. |
-| `API_V1_STR` | No | Defaults to `/api/v1`; keep stable for deployed clients. |
-| `DATABASE_URL` | Yes | Use a SQLite URL pointing at persistent storage, for example `sqlite:////data/lydian_gravity.db`. |
-| `SECRET_KEY` | Yes | Generate a unique secret with `openssl rand -hex 32`; never reuse the example value. |
-| `ALGORITHM` | No | Defaults to `HS256`; keep aligned with issued JWTs. |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Defaults to `30`; adjust to your auth policy. |
-| `BACKEND_CORS_ORIGINS` | No | JSON array of exact allowed frontend origins, for example `["https://app.example.com"]`. |
+Deploy this repo as a Python ASGI service on a host that supports Python 3.13
+and persistent disk storage.
 
-Example production environment:
-
-```bash
-PROJECT_NAME="Lydian Gravity FastAPI"
-DEBUG=False
-API_V1_STR="/api/v1"
-DATABASE_URL="sqlite:////data/lydian_gravity.db"
-SECRET_KEY="<output-of-openssl-rand-hex-32>"
-ALGORITHM="HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-BACKEND_CORS_ORIGINS='["https://app.example.com"]'
-```
-
-## Deployment
-
-This repository does not include platform-specific deployment files. Deploy it as a Python ASGI service on a VPS or PaaS that supports Python 3.13 and persistent disk storage.
-
-### Build Command
+Build command:
 
 ```bash
 uv sync --locked --no-dev
 ```
 
-### Start Command
+Start command:
 
 ```bash
 uv run fastapi run app/main.py --host 0.0.0.0 --port ${PORT:-8000}
 ```
 
-Most PaaS providers inject `PORT`. On a VPS, set `PORT` yourself or replace `${PORT:-8000}` with the port exposed by your process manager.
+Production checklist:
 
-### Persistent Database
+- Set `DEBUG=False`.
+- Use a unique `SECRET_KEY`.
+- Store the SQLite database on persistent storage, such as `/data`.
+- Set `DATABASE_URL` to that persistent path, for example
+  `sqlite:////data/lydian_gravity.db`.
+- Set `BACKEND_CORS_ORIGINS` to the exact deployed frontend origins.
+- Back up the SQLite database file regularly.
 
-SQLite tables are created automatically on application startup with `Base.metadata.create_all()`. The database file must be stored on persistent disk. Do not place the production database in an ephemeral deploy directory unless data loss is acceptable.
-
-Recommended production pattern:
-
-1. Mount persistent storage, for example `/data`.
-2. Set `DATABASE_URL="sqlite:////data/lydian_gravity.db"`.
-3. Back up the SQLite file regularly.
-
-Local `.env` files and SQLite database files are intentionally ignored by git.
-
-### CORS
-
-Set `BACKEND_CORS_ORIGINS` to the exact deployed frontend origins. Include scheme, host, and port when applicable.
-
-```bash
-BACKEND_CORS_ORIGINS='["https://app.example.com","https://www.example.com"]'
-```
-
-## Deployment Smoke Checks
-
-After deploy, verify the process and routing:
+After deploy, verify:
 
 ```bash
 curl https://api.example.com/
@@ -147,4 +181,9 @@ Expected health response:
 {"status":"ok"}
 ```
 
-Then confirm browser-based clients can authenticate and save songs from the configured frontend origin. If frontend requests fail before reaching the API, recheck `BACKEND_CORS_ORIGINS`.
+## Companion Project
+
+The frontend lives in
+[lydian-gravity-web](https://github.com/damian-oh/lydian-gravity-web). It
+consumes this API for auth, saved libraries, arrangement updates, and theory
+suggestions.
