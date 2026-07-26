@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     DEMO_SESSION_EXPIRE_MINUTES: int = 720
     DEMO_MAX_SESSIONS_PER_HOUR: int = 60
 
+    # Per-client ceiling, keyed by request.client.host. Behind a reverse proxy,
+    # run uvicorn with --proxy-headers --forwarded-allow-ips=<proxy ip> or every
+    # visitor shares the proxy address and this degrades into a second global
+    # ceiling.
+    DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR: int = 5
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 

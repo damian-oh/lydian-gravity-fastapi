@@ -12,20 +12,29 @@ from app.db.session import engine
 
 def ensure_sqlite_schema_compatibility() -> None:
     inspector = inspect(engine)
+    table_names = inspector.get_table_names()
 
-    if "song_sections" not in inspector.get_table_names():
-        return
-
-    section_columns = {
-        column["name"] for column in inspector.get_columns("song_sections")
-    }
-    if "total_beats" not in section_columns:
-        with engine.begin() as connection:
-            connection.execute(
-                text(
-                    "ALTER TABLE song_sections ADD COLUMN total_beats INTEGER NOT NULL DEFAULT 16"
+    if "song_sections" in table_names:
+        section_columns = {
+            column["name"] for column in inspector.get_columns("song_sections")
+        }
+        if "total_beats" not in section_columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE song_sections ADD COLUMN total_beats INTEGER NOT NULL DEFAULT 16"
+                    )
                 )
-            )
+
+    if "users" in table_names:
+        user_columns = {column["name"] for column in inspector.get_columns("users")}
+        if "is_demo" not in user_columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
 
 
 @asynccontextmanager

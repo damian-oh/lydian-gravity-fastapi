@@ -21,10 +21,17 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
     return list(db.scalars(stmt).all())
 
 
-def create_user(db: Session, user_in: UserCreate, password_hash: str) -> User:
+def create_user(
+    db: Session,
+    user_in: UserCreate,
+    password_hash: str,
+    *,
+    is_demo: bool = False,
+) -> User:
     db_user = User(
         email=user_in.email,
         password_hash=password_hash,
+        is_demo=is_demo,
     )
     db.add(db_user)
     db.commit()

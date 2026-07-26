@@ -41,5 +41,6 @@ class UserPasswordUpdate(BaseModel):
 class UserRead(UserBase):
     id: int
     created_at: datetime
+    is_demo: bool
 
     model_config = ConfigDict(from_attributes=True)

@@ -4,6 +4,10 @@ Demo mode creates one throwaway user per visitor, so a long-running deployment
 accumulates rows. Songs, sections, chords and melodic notes go with the user
 via the existing cascade on User.song_sketches.
 
+Accounts are selected by the is_demo flag rather than by their email address, so
+a demo visitor who edits their email through PATCH /users/me is still purged and
+a registered account that happens to look like a demo address never is.
+
 Usage:
     uv run python scripts/purge_demo_users.py            # older than 7 days
     uv run python scripts/purge_demo_users.py --days 1
@@ -19,9 +23,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import select  # noqa: E402
 
+# Imported for its side effect: every model has to be registered before the
+# User.song_sketches relationship can resolve, and the cascade is what removes a
+# purged account's songs.
+from app.db.base import User  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
-from app.models.user import User  # noqa: E402
-from app.services.demo_service import DEMO_EMAIL_DOMAIN, DEMO_EMAIL_PREFIX  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,7 +56,7 @@ def main() -> int:
         stale_users = list(
             db.scalars(
                 select(User).where(
-                    User.email.like(f"{DEMO_EMAIL_PREFIX}%@{DEMO_EMAIL_DOMAIN}"),
+                    User.is_demo.is_(True),
                     User.created_at < cutoff,
                 )
             )

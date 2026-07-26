@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Form, HTTPException, status
+from fastapi import APIRouter, Form, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import SessionDep
@@ -64,18 +64,33 @@ async def login_access_token(
     return Token(access_token=access_token, token_type="bearer")
 
 
-@router.post("/demo-session", response_model=Token)
-async def create_demo_session(db: SessionDep) -> Token:
+@router.post(
+    "/demo-session",
+    response_model=Token,
+    # Hidden from the schema when the deployment has demo mode off, so the
+    # documented API matches what the deployment actually serves.
+    include_in_schema=settings.DEMO_MODE,
+)
+def create_demo_session(request: Request, db: SessionDep) -> Token:
+    """Provision a throwaway account and return a real access token for it.
+
+    Defined with def rather than async def -- unlike every other endpoint here
+    it hashes a password, and Argon2 is slow enough that running it on the event
+    loop would stall every other in-flight request. FastAPI hands a def endpoint
+    to the threadpool.
+    """
     if not settings.DEMO_MODE:
-        # 404 rather than 403 so the route is indistinguishable from one that
-        # does not exist when demo mode is off.
+        # 404 rather than 403 so a probe gets the same response it would get for
+        # a path that is not routed at all.
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Not Found",
         )
 
+    client_key = request.client.host if request.client else "unknown"
+
     try:
-        return demo_service.provision_demo_session(db)
+        return demo_service.provision_demo_session(db, client_key)
     except DemoThrottleError:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.security import create_access_token
-from app.crud import crud_song_sketch
+from app.crud import crud_song_sketch, crud_user
 from app.models.chord import Chord
 from app.models.melodic_note import MelodicNote
 from app.models.song_section import SongSection
@@ -58,34 +58,82 @@ DEMO_MELODY = (
 
 
 class DemoThrottleError(RuntimeError):
-    """Raised when demo provisioning exceeds the configured hourly ceiling."""
+    """Raised when demo provisioning exceeds one of the configured ceilings."""
 
 
-_recent_provisions: deque[float] = deque()
+THROTTLE_WINDOW_SECONDS = 3600
+
+# Ceiling on how many distinct clients are tracked at once. Reaching it only
+# costs accuracy for the oldest idle clients, never correctness of the global
+# ceiling, which is tracked separately.
+CLIENT_TRACKING_LIMIT = 1024
+
+_global_provisions: deque[float] = deque()
+_client_provisions: dict[str, deque[float]] = {}
 
 
-def _check_throttle() -> None:
-    """Cap how many demo accounts can be created per rolling hour.
+def _prune(window: deque[float], cutoff: float) -> None:
+    while window and window[0] < cutoff:
+        window.popleft()
+
+
+def check_demo_quota(client_key: str) -> None:
+    """Reject provisioning once either rolling-hour ceiling is reached.
 
     Each provision writes a user row, so an unthrottled endpoint is an easy way
-    to bloat the database. A single-process in-memory counter is enough for the
-    deployment this feature targets.
+    to bloat the database. The per-client ceiling is what keeps one visitor from
+    consuming the global budget and denying the demo to everyone else; the
+    global ceiling remains as a backstop. A single-process in-memory counter is
+    enough for the deployment this feature targets.
+
+    Checking is separate from recording so that a provision which fails partway
+    through does not burn a slot -- see record_demo_provision.
     """
     now = time.monotonic()
-    cutoff = now - 3600
+    cutoff = now - THROTTLE_WINDOW_SECONDS
 
-    while _recent_provisions and _recent_provisions[0] < cutoff:
-        _recent_provisions.popleft()
+    _prune(_global_provisions, cutoff)
 
-    if len(_recent_provisions) >= settings.DEMO_MAX_SESSIONS_PER_HOUR:
+    if len(_global_provisions) >= settings.DEMO_MAX_SESSIONS_PER_HOUR:
         raise DemoThrottleError
 
-    _recent_provisions.append(now)
+    client_window = _client_provisions.get(client_key)
+
+    if client_window is not None:
+        _prune(client_window, cutoff)
+
+        if len(client_window) >= settings.DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR:
+            raise DemoThrottleError
+
+
+def record_demo_provision(client_key: str) -> None:
+    """Count a demo account that was actually created."""
+    now = time.monotonic()
+    cutoff = now - THROTTLE_WINDOW_SECONDS
+
+    _global_provisions.append(now)
+
+    client_window = _client_provisions.setdefault(client_key, deque())
+    client_window.append(now)
+
+    if len(_client_provisions) > CLIENT_TRACKING_LIMIT:
+        _evict_idle_clients(cutoff)
+
+
+def _evict_idle_clients(cutoff: float) -> None:
+    """Drop clients whose entries have all aged out of the window."""
+    for key in list(_client_provisions):
+        window = _client_provisions[key]
+        _prune(window, cutoff)
+
+        if not window:
+            del _client_provisions[key]
 
 
 def reset_throttle() -> None:
-    """Clear the throttle window. Used by tests."""
-    _recent_provisions.clear()
+    """Clear both throttle windows. Used by tests."""
+    _global_provisions.clear()
+    _client_provisions.clear()
 
 
 def create_demo_user(db: Session) -> User:
@@ -99,7 +147,7 @@ def create_demo_user(db: Session) -> User:
         password=secrets.token_urlsafe(32),
     )
 
-    return user_service.create_user(db, user_in)
+    return user_service.create_user(db, user_in, is_demo=True)
 
 
 def seed_demo_song(db: Session, user_id: int) -> SongSketch:
@@ -159,15 +207,26 @@ def seed_demo_song(db: Session, user_id: int) -> SongSketch:
     return song
 
 
-def provision_demo_session(db: Session) -> Token:
+def provision_demo_session(db: Session, client_key: str) -> Token:
     """Create a seeded demo account and return an access token for it.
 
-    Raises DemoThrottleError when the hourly ceiling is reached.
+    Raises DemoThrottleError when either hourly ceiling is reached.
     """
-    _check_throttle()
+    check_demo_quota(client_key)
 
     user = create_demo_user(db)
-    seed_demo_song(db, user_id=user.id)
+
+    # create_user and create_song_sketch each commit, so the account exists
+    # before it is seeded. Remove it if seeding fails rather than leaving an
+    # empty account behind; the cascade takes any partial song with it.
+    try:
+        seed_demo_song(db, user_id=user.id)
+    except Exception:
+        db.rollback()
+        crud_user.delete_user(db, user)
+        raise
+
+    record_demo_provision(client_key)
 
     access_token = create_access_token(
         subject=user.id,

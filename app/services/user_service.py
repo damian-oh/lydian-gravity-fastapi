@@ -10,10 +10,10 @@ from app.models.user import User
 from app.schemas.user import UserCreate, UserPasswordUpdate
 
 
-def create_user(db: Session, user_in: UserCreate) -> User:
+def create_user(db: Session, user_in: UserCreate, *, is_demo: bool = False) -> User:
     password_hash = get_password_hash(user_in.password)
 
-    return crud_user.create_user(db, user_in, password_hash)
+    return crud_user.create_user(db, user_in, password_hash, is_demo=is_demo)
 
 
 def change_user_password(
