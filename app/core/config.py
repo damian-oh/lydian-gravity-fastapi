@@ -14,6 +14,13 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
+    # Demo mode provisions a throwaway user and JWT on request so a public
+    # deployment can be explored without registering. It never relaxes token
+    # validation -- see app/services/demo_service.py.
+    DEMO_MODE: bool = False
+    DEMO_SESSION_EXPIRE_MINUTES: int = 720
+    DEMO_MAX_SESSIONS_PER_HOUR: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 

@@ -10,7 +10,8 @@ from app.core.security import create_access_token
 from app.crud import crud_user
 from app.schemas.token import Token
 from app.schemas.user import UserCreate, UserRead
-from app.services import user_service
+from app.services import demo_service, user_service
+from app.services.demo_service import DemoThrottleError
 
 router = APIRouter()
 
@@ -61,3 +62,22 @@ async def login_access_token(
     )
 
     return Token(access_token=access_token, token_type="bearer")
+
+
+@router.post("/demo-session", response_model=Token)
+async def create_demo_session(db: SessionDep) -> Token:
+    if not settings.DEMO_MODE:
+        # 404 rather than 403 so the route is indistinguishable from one that
+        # does not exist when demo mode is off.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not Found",
+        )
+
+    try:
+        return demo_service.provision_demo_session(db)
+    except DemoThrottleError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many demo sessions have been created. Try again later.",
+        ) from None
