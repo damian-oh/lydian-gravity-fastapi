@@ -10,6 +10,9 @@ from sqlalchemy.pool import StaticPool
 os.environ["PROJECT_NAME"] = "Lydian Gravity FastAPI Test"
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["SECRET_KEY"] = "test-secret-key-with-at-least-32-bytes"
+# Pinned so the suite does not inherit a developer's local .env, where demo mode
+# may well be on. Tests that need it enable it explicitly.
+os.environ["DEMO_MODE"] = "False"
 
 from app.db.base import Base  # noqa: E402
 from app.db.session import get_db  # noqa: E402

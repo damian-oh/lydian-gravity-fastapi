@@ -1,9 +1,13 @@
+from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 
 from app.core.config import settings
+from app.main import app
+from app.models.user import User
 from app.services import demo_service
 
 pytestmark = pytest.mark.anyio
@@ -17,6 +21,25 @@ def demo_mode() -> AsyncGenerator[None, None]:
     yield
     settings.DEMO_MODE = original
     demo_service.reset_throttle()
+
+
+@asynccontextmanager
+async def client_at(host: str) -> AsyncGenerator[AsyncClient, None]:
+    """A second client seen by the app as a different address.
+
+    It shares the get_db override the client fixture installed, so both clients
+    talk to the same database.
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=(host, 1234)),
+        base_url="http://test",
+    ) as other_client:
+        yield other_client
+
+
+def count_users() -> int:
+    with app.state.testing_session_local() as db:
+        return db.scalar(select(func.count()).select_from(User))
 
 
 async def start_demo_session(client: AsyncClient) -> str:
@@ -150,10 +173,29 @@ async def test_demo_mode_does_not_weaken_token_validation(
     assert response.status_code == 401
 
 
-async def test_demo_session_is_throttled(
+async def test_demo_accounts_are_flagged_and_registered_accounts_are_not(
+    client: AsyncClient, demo_mode: None
+) -> None:
+    token = await start_demo_session(client)
+
+    demo_user = await client.get("/api/v1/users/me", headers=auth_headers(token))
+
+    assert demo_user.json()["is_demo"] is True
+
+    registered = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "real@example.com", "password": "correct-password"},
+    )
+
+    assert registered.status_code == 201
+    assert registered.json()["is_demo"] is False
+
+
+async def test_demo_session_is_throttled_globally(
     client: AsyncClient, demo_mode: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_HOUR", 2)
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR", 100)
 
     assert (await client.post("/api/v1/auth/demo-session")).status_code == 200
     assert (await client.post("/api/v1/auth/demo-session")).status_code == 200
@@ -161,3 +203,42 @@ async def test_demo_session_is_throttled(
     throttled = await client.post("/api/v1/auth/demo-session")
 
     assert throttled.status_code == 429
+
+
+async def test_demo_throttle_is_scoped_per_client(
+    client: AsyncClient, demo_mode: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR", 1)
+
+    assert (await client.post("/api/v1/auth/demo-session")).status_code == 200
+    assert (await client.post("/api/v1/auth/demo-session")).status_code == 429
+
+    # One visitor exhausting their own allowance must not close the demo for
+    # everyone else.
+    async with client_at("203.0.113.9") as other_visitor:
+        response = await other_visitor.post("/api/v1/auth/demo-session")
+
+    assert response.status_code == 200
+
+
+async def test_failed_provisioning_leaves_no_account_and_no_quota_spent(
+    client: AsyncClient, demo_mode: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR", 1)
+    original_seed = demo_service.seed_demo_song
+
+    def failing_seed(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("seeding blew up")
+
+    monkeypatch.setattr(demo_service, "seed_demo_song", failing_seed)
+
+    with pytest.raises(RuntimeError):
+        await client.post("/api/v1/auth/demo-session")
+
+    assert count_users() == 0
+
+    # The failed attempt must not have spent the visitor's single allowance.
+    monkeypatch.setattr(demo_service, "seed_demo_song", original_seed)
+
+    assert (await client.post("/api/v1/auth/demo-session")).status_code == 200
+    assert count_users() == 1
