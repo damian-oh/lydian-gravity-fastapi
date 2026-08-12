@@ -1,6 +1,7 @@
 import json
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -109,8 +110,8 @@ def build_song_response(song: SongSketch) -> SongRead:
 async def read_songs(
     db: SessionDep,
     current_user: CurrentUser,
-    skip: int = 0,
-    limit: int = 100,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ) -> list[SongSummaryRead]:
     songs = crud_song_sketch.get_song_sketches_by_user(
         db,
