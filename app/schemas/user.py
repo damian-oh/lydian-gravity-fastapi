@@ -23,8 +23,11 @@ class UserUpdate(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: str | None) -> str | None:
+        # Runs only when the field is present in the payload, so an omitted
+        # email still defaults to None; an explicit null is rejected because
+        # the column is NOT NULL and clearing an email makes no sense.
         if value is None:
-            return None
+            raise ValueError("email cannot be null.")
 
         return value.strip().lower()
 
