@@ -64,8 +64,9 @@ class DemoThrottleError(RuntimeError):
 
 THROTTLE_WINDOW_SECONDS = 3600
 
-# Ceiling on how many distinct clients are tracked at once. Reaching it only
-# costs accuracy for the oldest idle clients, never correctness of the global
+# Ceiling on how many distinct clients are tracked at once. When idle clients
+# alone cannot bring the dict back under it, the stalest active clients are
+# evicted too -- costing accuracy for them, never correctness of the global
 # ceiling, which is tracked separately.
 CLIENT_TRACKING_LIMIT = 1024
 
@@ -117,7 +118,7 @@ def reserve_demo_slot(client_key: str) -> float:
         _client_provisions.setdefault(client_key, deque()).append(now)
 
         if len(_client_provisions) > CLIENT_TRACKING_LIMIT:
-            _evict_idle_clients(cutoff)
+            _evict_clients(cutoff)
 
         return now
 
@@ -145,13 +146,29 @@ def release_demo_slot(client_key: str, reservation: float) -> None:
                 del _client_provisions[client_key]
 
 
-def _evict_idle_clients(cutoff: float) -> None:
-    """Drop clients whose entries have all aged out of the window."""
+def _evict_clients(cutoff: float) -> None:
+    """Bring the client dict back under CLIENT_TRACKING_LIMIT.
+
+    Idle clients (all entries aged out) go first; if that is not enough, the
+    stalest active clients follow. Callers must hold _throttle_lock. The client
+    reserved just now has the newest entry, so it is never evicted here.
+    """
     for key in list(_client_provisions):
         window = _client_provisions[key]
         _prune(window, cutoff)
 
         if not window:
+            del _client_provisions[key]
+
+    overflow = len(_client_provisions) - CLIENT_TRACKING_LIMIT
+
+    if overflow > 0:
+        stalest = sorted(
+            _client_provisions,
+            key=lambda key: _client_provisions[key][-1],
+        )[:overflow]
+
+        for key in stalest:
             del _client_provisions[key]
 
 
