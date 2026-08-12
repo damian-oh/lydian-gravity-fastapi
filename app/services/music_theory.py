@@ -229,7 +229,12 @@ def quality_suffix(quality: str) -> str:
     }.get(quality, quality)
 
 
-def scale_degree_label(root_offset: int) -> str:
+def scale_degree_label(root_offset: int, mode: str = "ionian") -> str:
+    if root_offset == 6:
+        # Offset 6 is diatonic only in lydian (#IV) and locrian, where it is
+        # the mode's own diminished fifth, not a raised fourth.
+        return "bV" if mode == "locrian" else "#IV"
+
     return {
         0: "I",
         1: "bII",
@@ -237,7 +242,6 @@ def scale_degree_label(root_offset: int) -> str:
         3: "bIII",
         4: "III",
         5: "IV",
-        6: "#IV",
         7: "V",
         8: "bVI",
         9: "VI",
@@ -246,8 +250,8 @@ def scale_degree_label(root_offset: int) -> str:
     }.get(root_offset, "I")
 
 
-def build_roman_numeral(root_offset: int, quality: str) -> str:
-    base = scale_degree_label(root_offset)
+def build_roman_numeral(root_offset: int, quality: str, mode: str = "ionian") -> str:
+    base = scale_degree_label(root_offset, mode)
     suffix = {
         "maj7": "maj7",
         "7": "7",
@@ -282,8 +286,8 @@ def build_mode_seventh_chords(tonal_center: str, mode: str) -> list[BuiltChord]:
                 quality=quality,
                 chord_name=f"{root}{quality_suffix(quality)}",
                 notes=build_chord_notes(root, quality, chromatic),
-                roman_numeral=build_roman_numeral(root_offset, quality),
-                degree_label=scale_degree_label(root_offset),
+                roman_numeral=build_roman_numeral(root_offset, quality, mode),
+                degree_label=scale_degree_label(root_offset, mode),
             )
         )
 
