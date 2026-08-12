@@ -268,3 +268,22 @@ async def test_password_change_requires_current_password_and_replaces_old_passwo
     assert change_response.json() == {"message": "Password updated successfully."}
     assert old_login_response.status_code == 401
     assert new_login_response.status_code == 200
+
+
+async def test_update_current_user_rejects_explicit_null_email(
+    client: AsyncClient,
+) -> None:
+    assert (
+        await register_user(client, email="nullable@example.com", password="pw12345678")
+    ).status_code == 201
+    token = (
+        await login_user(client, email="nullable@example.com", password="pw12345678")
+    ).json()["access_token"]
+
+    response = await client.patch(
+        "/api/v1/users/me",
+        headers=auth_headers(token),
+        json={"email": None},
+    )
+
+    assert response.status_code == 422
