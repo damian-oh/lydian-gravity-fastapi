@@ -80,6 +80,18 @@ MODE_TONIC_OFFSETS: dict[str, int] = {
 # Semitone classes of the flat-side major keys F, Bb, Eb, Ab, and Db.
 FLAT_MAJOR_SEMITONES = {5, 10, 3, 8, 1}
 
+# Index into the mode's pitch collection of the scale degree that most
+# distinguishes the mode from its neighbors (lydian's #4, phrygian's b2, ...).
+CHARACTERISTIC_DEGREE_INDEX: dict[str, int] = {
+    "lydian": 3,
+    "ionian": 3,
+    "dorian": 5,
+    "mixolydian": 6,
+    "aeolian": 5,
+    "phrygian": 1,
+    "locrian": 4,
+}
+
 
 @dataclass(frozen=True)
 class BuiltChord:
@@ -439,8 +451,9 @@ def generate_next_step_suggestions(
             for suggestion in suggestions
         ],
         "melody_prompt": (
-            f"Lean on {pitch_collection[2]} or {pitch_collection[6]} for color, then resolve toward "
-            f"{tonal_center} when the phrase needs rest."
+            f"Lean on {pitch_collection[CHARACTERISTIC_DEGREE_INDEX.get(mode, 3)]} "
+            f"or {pitch_collection[2]} for color, then resolve toward "
+            f"{pitch_collection[0]} when the phrase needs rest."
         ),
         "rhythmic_prompt": "Try one sustained note across the bar line, then answer with shorter motion on the next chord.",
         "interchange_insight": (
