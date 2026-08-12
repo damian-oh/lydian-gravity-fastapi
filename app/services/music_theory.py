@@ -358,7 +358,9 @@ def generate_next_step_suggestions(
         -1,
     )
     next_diatonic = diatonic_chords[(active_index + 1) % len(diatonic_chords)]
-    target_for_dominant = diatonic_chords[(active_index + 2) % len(diatonic_chords)]
+    # Cycle over degrees 1..6 only: V "of the tonic" is just the diatonic V,
+    # which must never be presented as a secondary dominant.
+    target_for_dominant = diatonic_chords[((active_index + 1) % 6) + 1]
     secondary = build_secondary_dominant(target_for_dominant, tonal_center, chromatic)
     diatonic_signatures = {get_chord_signature(chord) for chord in diatonic_chords}
     borrowed_source_mode = "ionian" if mode != "ionian" else "dorian"
