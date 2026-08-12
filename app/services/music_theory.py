@@ -64,7 +64,21 @@ CHORD_QUALITIES = {
 
 SHARP_CHROMATIC = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 FLAT_CHROMATIC = ("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
-FLAT_PREFERRED_TONICS = {"F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"}
+
+# Semitone offset from a mode's tonic down to its relative major (ionian) tonic:
+# D dorian shares its key signature with C major, so dorian maps to 2, etc.
+MODE_TONIC_OFFSETS: dict[str, int] = {
+    "ionian": 0,
+    "dorian": 2,
+    "phrygian": 4,
+    "lydian": 5,
+    "mixolydian": 7,
+    "aeolian": 9,
+    "locrian": 11,
+}
+
+# Semitone classes of the flat-side major keys F, Bb, Eb, Ab, and Db.
+FLAT_MAJOR_SEMITONES = {5, 10, 3, 8, 1}
 
 
 @dataclass(frozen=True)
@@ -106,16 +120,32 @@ def normalize_semitone(value: int) -> int:
     return value % 12
 
 
-def get_preferred_chromatic(tonal_center: str) -> tuple[str, ...]:
-    return (
-        FLAT_CHROMATIC
-        if "b" in tonal_center or tonal_center in FLAT_PREFERRED_TONICS
-        else SHARP_CHROMATIC
+def get_preferred_chromatic(tonal_center: str, mode: str = "ionian") -> tuple[str, ...]:
+    # The sharp/flat side of a key is a property of the key signature, which
+    # depends on tonic AND mode: C dorian carries the two flats of Bb major.
+    # Limitation: the 12-name tables cannot spell E#/B#/Cb/Fb or double
+    # accidentals, so remote keys get single-accidental respellings. This is
+    # deliberate -- chord validators and the audio transport only accept these
+    # 21 note names. Must stay in lockstep with chord-catalog.ts.
+    if "b" in tonal_center:
+        return FLAT_CHROMATIC
+    if "#" in tonal_center:
+        return SHARP_CHROMATIC
+
+    relative_major = normalize_semitone(
+        NOTE_TO_SEMITONE.get(tonal_center, 0) - MODE_TONIC_OFFSETS.get(mode, 0)
     )
 
+    return FLAT_CHROMATIC if relative_major in FLAT_MAJOR_SEMITONES else SHARP_CHROMATIC
 
-def get_note_at_interval(tonal_center: str, semitone_offset: int) -> str:
-    chromatic = get_preferred_chromatic(tonal_center)
+
+def get_note_at_interval(
+    tonal_center: str,
+    semitone_offset: int,
+    chromatic: tuple[str, ...] | None = None,
+) -> str:
+    if chromatic is None:
+        chromatic = get_preferred_chromatic(tonal_center)
     base_semitone = NOTE_TO_SEMITONE.get(tonal_center, 0)
 
     return chromatic[normalize_semitone(base_semitone + semitone_offset)]
@@ -123,8 +153,12 @@ def get_note_at_interval(tonal_center: str, semitone_offset: int) -> str:
 
 def build_pitch_collection(tonal_center: str, mode: str) -> list[str]:
     intervals = MODE_INTERVALS.get(mode, MODE_INTERVALS["ionian"])
+    chromatic = get_preferred_chromatic(tonal_center, mode)
 
-    return [get_note_at_interval(tonal_center, interval) for interval in intervals]
+    return [
+        get_note_at_interval(tonal_center, interval, chromatic)
+        for interval in intervals
+    ]
 
 
 def get_stack_interval(scale: tuple[int, ...], degree_index: int, step: int) -> int:
@@ -148,7 +182,11 @@ def get_seventh_quality(intervals: tuple[int, int, int]) -> str:
     return "min7b5"
 
 
-def build_chord_notes(root: str, quality: str) -> tuple[str, ...]:
+def build_chord_notes(
+    root: str,
+    quality: str,
+    chromatic: tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
     quality_intervals: dict[str, tuple[int, ...]] = {
         "maj": (0, 4, 7),
         "maj7": (0, 4, 7, 11),
@@ -165,7 +203,7 @@ def build_chord_notes(root: str, quality: str) -> tuple[str, ...]:
     }
 
     return tuple(
-        get_note_at_interval(root, interval)
+        get_note_at_interval(root, interval, chromatic)
         for interval in quality_intervals.get(quality, (0, 4, 7))
     )
 
@@ -226,6 +264,7 @@ def build_roman_numeral(root_offset: int, quality: str) -> str:
 
 def build_mode_seventh_chords(tonal_center: str, mode: str) -> list[BuiltChord]:
     scale = MODE_INTERVALS.get(mode, MODE_INTERVALS["ionian"])
+    chromatic = get_preferred_chromatic(tonal_center, mode)
     chords: list[BuiltChord] = []
 
     for degree_index, root_offset in enumerate(scale):
@@ -235,14 +274,14 @@ def build_mode_seventh_chords(tonal_center: str, mode: str) -> list[BuiltChord]:
             get_stack_interval(scale, degree_index, 6),
         )
         quality = get_seventh_quality(intervals)
-        root = get_note_at_interval(tonal_center, root_offset)
+        root = get_note_at_interval(tonal_center, root_offset, chromatic)
         chords.append(
             BuiltChord(
                 root=root,
                 root_offset=root_offset,
                 quality=quality,
                 chord_name=f"{root}{quality_suffix(quality)}",
-                notes=build_chord_notes(root, quality),
+                notes=build_chord_notes(root, quality, chromatic),
                 roman_numeral=build_roman_numeral(root_offset, quality),
                 degree_label=scale_degree_label(root_offset),
             )
@@ -251,8 +290,12 @@ def build_mode_seventh_chords(tonal_center: str, mode: str) -> list[BuiltChord]:
     return chords
 
 
-def build_secondary_dominant(target_chord: BuiltChord, tonal_center: str) -> BuiltChord:
-    root = get_note_at_interval(target_chord.root, 7)
+def build_secondary_dominant(
+    target_chord: BuiltChord,
+    tonal_center: str,
+    chromatic: tuple[str, ...] | None = None,
+) -> BuiltChord:
+    root = get_note_at_interval(target_chord.root, 7, chromatic)
 
     return BuiltChord(
         root=root,
@@ -261,7 +304,7 @@ def build_secondary_dominant(target_chord: BuiltChord, tonal_center: str) -> Bui
         ),
         quality="7",
         chord_name=f"{root}7",
-        notes=build_chord_notes(root, "7"),
+        notes=build_chord_notes(root, "7", chromatic),
         roman_numeral=f"V/{target_chord.degree_label}",
         degree_label=target_chord.degree_label,
     )
@@ -277,6 +320,7 @@ def generate_next_step_suggestions(
     chords: list[dict],
 ) -> dict[str, object]:
     pitch_collection = build_pitch_collection(tonal_center, mode)
+    chromatic = get_preferred_chromatic(tonal_center, mode)
     diatonic_chords = build_mode_seventh_chords(tonal_center, mode)
     active_chord = chords[-1] if chords else None
     active_root = active_chord.get("root") if active_chord else tonal_center
@@ -290,7 +334,7 @@ def generate_next_step_suggestions(
     )
     next_diatonic = diatonic_chords[(active_index + 1) % len(diatonic_chords)]
     target_for_dominant = diatonic_chords[(active_index + 2) % len(diatonic_chords)]
-    secondary = build_secondary_dominant(target_for_dominant, tonal_center)
+    secondary = build_secondary_dominant(target_for_dominant, tonal_center, chromatic)
     diatonic_signatures = {get_chord_signature(chord) for chord in diatonic_chords}
     borrowed_source_mode = "ionian" if mode != "ionian" else "dorian"
     borrowed_chord = next(
