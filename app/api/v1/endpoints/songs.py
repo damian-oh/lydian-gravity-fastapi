@@ -2,7 +2,7 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, SessionDep
@@ -239,6 +239,9 @@ async def replace_song_arrangement(
         ]
         song.song_sections.append(section)
 
+    # Only child rows change here, so the column's onupdate would never fire;
+    # bump the parent timestamp explicitly.
+    song.updated_at = func.now()
     db.add(song)
     db.commit()
     db.refresh(song)
