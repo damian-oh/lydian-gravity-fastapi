@@ -21,7 +21,8 @@ router = APIRouter()
     response_model=UserRead,
     status_code=status.HTTP_201_CREATED,
 )
-async def register_user(db: SessionDep, user_in: UserCreate) -> UserRead:
+def register_user(db: SessionDep, user_in: UserCreate) -> UserRead:
+    # def rather than async def: hashes a password (see create_demo_session).
     if crud_user.get_user_by_email(db, email=user_in.email) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -39,11 +40,12 @@ async def register_user(db: SessionDep, user_in: UserCreate) -> UserRead:
 
 
 @router.post("/login", response_model=Token)
-async def login_access_token(
+def login_access_token(
     db: SessionDep,
     username: Annotated[str, Form()],
     password: Annotated[str, Form()],
 ) -> Token:
+    # def rather than async def: verifies a password (see create_demo_session).
     user = user_service.authenticate_user(
         db,
         email=username.strip().lower(),
@@ -74,10 +76,10 @@ async def login_access_token(
 def create_demo_session(request: Request, db: SessionDep) -> Token:
     """Provision a throwaway account and return a real access token for it.
 
-    Defined with def rather than async def -- unlike every other endpoint here
-    it hashes a password, and Argon2 is slow enough that running it on the event
-    loop would stall every other in-flight request. FastAPI hands a def endpoint
-    to the threadpool.
+    Defined with def rather than async def -- like every endpoint here that
+    hashes a password, because Argon2 is slow enough that running it on the
+    event loop would stall every other in-flight request. FastAPI hands a def
+    endpoint to the threadpool.
     """
     if not settings.DEMO_MODE:
         # 404 rather than 403 so a probe gets the same response it would get for

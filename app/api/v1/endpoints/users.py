@@ -40,11 +40,13 @@ async def update_current_user(
 
 
 @router.post("/me/password", response_model=Msg)
-async def update_current_user_password(
+def update_current_user_password(
     db: SessionDep,
     current_user: CurrentUser,
     password_in: UserPasswordUpdate,
 ) -> Msg:
+    # def rather than async def: verifies and hashes a password, which is too
+    # slow for the event loop (see create_demo_session in auth.py).
     try:
         user_service.change_user_password(db, current_user, password_in)
     except ValueError:
