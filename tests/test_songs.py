@@ -307,3 +307,117 @@ async def test_next_step_suggestions_use_flat_spellings_in_flat_modes(
         for suggestion in body["suggested_chords"]
         for note in suggestion["notes"]
     )
+
+
+async def test_song_pagination_params_are_validated(client: AsyncClient) -> None:
+    headers = await create_authenticated_user(client)
+
+    for query in ("skip=-1", "limit=-1", "limit=0", "limit=201"):
+        response = await client.get(f"/api/v1/songs?{query}", headers=headers)
+
+        assert response.status_code == 422, query
+
+
+async def test_timestamps_are_serialized_with_utc_offset(client: AsyncClient) -> None:
+    headers = await create_authenticated_user(client)
+    song = await create_song(client, headers)
+
+    assert song["created_at"].endswith("Z") or song["created_at"].endswith("+00:00")
+
+
+async def test_arrangement_save_bumps_updated_at(client: AsyncClient) -> None:
+    from datetime import datetime, timezone
+
+    from app.main import app
+    from app.models.song_sketch import SongSketch
+
+    headers = await create_authenticated_user(client)
+    song = await create_song(client, headers)
+
+    backdated = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    with app.state.testing_session_local() as db:
+        row = db.get(SongSketch, song["id"])
+        row.updated_at = backdated
+        db.commit()
+
+    response = await client.put(
+        f"/api/v1/songs/{song['id']}/arrangement",
+        headers=headers,
+        json={
+            "sections": [
+                {
+                    "section_type": "A",
+                    "label": "Verse 1",
+                    "order_index": 0,
+                    "total_beats": 8,
+                    "chords": [],
+                    "melodic_notes": [],
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    updated_at = datetime.fromisoformat(response.json()["updated_at"])
+    assert updated_at > backdated
+
+
+async def test_corrupt_chord_rows_degrade_instead_of_failing_the_song(
+    client: AsyncClient,
+) -> None:
+    from app.main import app
+    from app.models.chord import Chord
+
+    headers = await create_authenticated_user(client)
+    song = await create_song(client, headers)
+
+    def arrangement_chord(order_index: int, root: str, start_beat: float) -> dict:
+        return {
+            "order_index": order_index,
+            "root": root,
+            "quality": "maj7",
+            "chord_name": f"{root}maj7",
+            "notes": [root, "E", "G", "B"],
+            "start_beat": start_beat,
+            "duration_beats": 4,
+            "parent_mode": "lydian",
+        }
+
+    save_response = await client.put(
+        f"/api/v1/songs/{song['id']}/arrangement",
+        headers=headers,
+        json={
+            "sections": [
+                {
+                    "section_type": "A",
+                    "label": "Verse 1",
+                    "order_index": 0,
+                    "total_beats": 8,
+                    "chords": [
+                        arrangement_chord(0, "C", 0),
+                        arrangement_chord(1, "G", 4),
+                    ],
+                    "melodic_notes": [],
+                }
+            ]
+        },
+    )
+    assert save_response.status_code == 200
+
+    with app.state.testing_session_local() as db:
+        first, second = sorted(
+            db.query(Chord).all(), key=lambda chord: chord.order_index
+        )
+        # Corrupt cache: recomputable from root + quality.
+        first.notes = "not-json"
+        # Unrecoverable row: root itself is garbage.
+        second.root = "?"
+        db.commit()
+
+    read_response = await client.get(f"/api/v1/songs/{song['id']}", headers=headers)
+
+    assert read_response.status_code == 200
+    chords = read_response.json()["sections"][0]["chords"]
+    assert len(chords) == 1
+    # C lydian is sharp-side, so Cmaj7 recomputes to its natural spelling.
+    assert chords[0]["notes"] == ["C", "E", "G", "B"]
