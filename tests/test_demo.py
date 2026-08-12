@@ -242,3 +242,68 @@ async def test_failed_provisioning_leaves_no_account_and_no_quota_spent(
 
     assert (await client.post("/api/v1/auth/demo-session")).status_code == 200
     assert count_users() == 1
+
+
+def test_reserve_demo_slot_is_atomic_under_concurrency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_HOUR", 100)
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR", 3)
+    demo_service.reset_throttle()
+
+    outcomes: list[bool] = []
+    outcomes_lock = threading.Lock()
+    barrier = threading.Barrier(10)
+
+    def attempt() -> None:
+        barrier.wait()
+        try:
+            demo_service.reserve_demo_slot("burst-client")
+            reserved = True
+        except demo_service.DemoThrottleError:
+            reserved = False
+        with outcomes_lock:
+            outcomes.append(reserved)
+
+    threads = [threading.Thread(target=attempt) for _ in range(10)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sum(outcomes) == 3
+    demo_service.reset_throttle()
+
+
+def test_release_demo_slot_refunds_the_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_HOUR", 100)
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR", 1)
+    demo_service.reset_throttle()
+
+    reservation = demo_service.reserve_demo_slot("visitor")
+
+    with pytest.raises(demo_service.DemoThrottleError):
+        demo_service.reserve_demo_slot("visitor")
+
+    demo_service.release_demo_slot("visitor", reservation)
+    demo_service.reserve_demo_slot("visitor")
+    demo_service.reset_throttle()
+
+
+def test_client_tracking_stays_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_HOUR", 1000)
+    monkeypatch.setattr(settings, "DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR", 5)
+    monkeypatch.setattr(demo_service, "CLIENT_TRACKING_LIMIT", 10)
+    demo_service.reset_throttle()
+
+    for index in range(25):
+        demo_service.reserve_demo_slot(f"flood-client-{index}")
+
+    assert len(demo_service._client_provisions) <= 10
+    # The newest client is never the one evicted.
+    assert "flood-client-24" in demo_service._client_provisions
+    demo_service.reset_throttle()
