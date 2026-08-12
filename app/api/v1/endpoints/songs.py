@@ -1,12 +1,20 @@
 import json
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, SessionDep
 from app.crud import crud_song_sketch
+from app.services.music_theory import (
+    build_chord_notes,
+    get_preferred_chromatic,
+    is_valid_chord_quality,
+    is_valid_note,
+)
 from app.models.chord import Chord
 from app.models.melodic_note import MelodicNote
 from app.models.song_section import SongSection
@@ -22,6 +30,8 @@ from app.schemas.song_sketch import (
     SongSketchUpdate,
     SongSummaryRead,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -43,19 +53,76 @@ def get_owned_song(db: Session, song_id: int, user_id: int) -> SongSketch:
     return song
 
 
-def parse_chord_notes(notes: str) -> list[str]:
-    try:
-        value = json.loads(notes)
-    except json.JSONDecodeError:
-        return []
+def resolve_chord_notes(chord: Chord, chromatic: tuple[str, ...]) -> list[str] | None:
+    """Return the chord's stored notes, repairing or rejecting bad rows.
 
-    return value if isinstance(value, list) else []
+    The notes column is a denormalized cache of root + quality, so a corrupt
+    cell (bad JSON, wrong shape, invalid note names) is recomputed rather than
+    allowed to fail ChordRead validation and 500 the whole song. Returns None
+    only when root/quality are themselves unusable; callers skip that chord.
+    """
+    try:
+        value = json.loads(chord.notes)
+    except (json.JSONDecodeError, TypeError):
+        value = None
+
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(note, str) and is_valid_note(note) for note in value)
+    ):
+        return value
+
+    if is_valid_note(chord.root) and is_valid_chord_quality(chord.quality):
+        return list(build_chord_notes(chord.root, chord.quality, chromatic))
+
+    return None
+
+
+def build_chord_reads(
+    section: SongSection, chromatic: tuple[str, ...]
+) -> list[ChordRead]:
+    reads: list[ChordRead] = []
+
+    for chord in sorted(section.chords, key=lambda item: (item.order_index, item.id)):
+        resolved_notes = resolve_chord_notes(chord, chromatic)
+
+        if resolved_notes is not None:
+            try:
+                reads.append(
+                    ChordRead(
+                        id=chord.id,
+                        section_id=chord.section_id,
+                        order_index=chord.order_index,
+                        root=chord.root,
+                        quality=chord.quality,
+                        chord_name=chord.chord_name,
+                        notes=resolved_notes,
+                        start_beat=chord.start_beat,
+                        duration_beats=chord.duration_beats,
+                        parent_mode=chord.parent_mode,
+                    )
+                )
+                continue
+            except ValidationError:
+                pass
+
+        # One corrupt row degrades to a missing chord instead of failing the
+        # whole song read.
+        logger.warning(
+            "Skipping unreadable chord row %s in section %s.",
+            chord.id,
+            section.id,
+        )
+
+    return reads
 
 
 def build_song_response(song: SongSketch) -> SongRead:
     sections = sorted(
         song.song_sections, key=lambda section: (section.order_index, section.id)
     )
+    chromatic = get_preferred_chromatic(song.master_tonal_center, song.master_mode)
 
     return SongRead(
         id=song.id,
@@ -76,23 +143,7 @@ def build_song_response(song: SongSketch) -> SongRead:
                 label=section.label,
                 order_index=section.order_index,
                 total_beats=section.total_beats,
-                chords=[
-                    ChordRead(
-                        id=chord.id,
-                        section_id=chord.section_id,
-                        order_index=chord.order_index,
-                        root=chord.root,
-                        quality=chord.quality,
-                        chord_name=chord.chord_name,
-                        notes=parse_chord_notes(chord.notes),
-                        start_beat=chord.start_beat,
-                        duration_beats=chord.duration_beats,
-                        parent_mode=chord.parent_mode,
-                    )
-                    for chord in sorted(
-                        section.chords, key=lambda item: (item.order_index, item.id)
-                    )
-                ],
+                chords=build_chord_reads(section, chromatic),
                 melodic_notes=[
                     MelodicNoteRead.model_validate(note)
                     for note in sorted(
