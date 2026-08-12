@@ -8,6 +8,7 @@ credentials are generated here instead of being chosen by a visitor.
 
 import json
 import secrets
+import threading
 import time
 from collections import deque
 from datetime import timedelta
@@ -68,6 +69,10 @@ THROTTLE_WINDOW_SECONDS = 3600
 # ceiling, which is tracked separately.
 CLIENT_TRACKING_LIMIT = 1024
 
+# The endpoint runs on the threadpool, so reserve/release and the windows they
+# mutate must be serialized; otherwise a burst of concurrent requests all pass
+# the ceiling check before any of them records.
+_throttle_lock = threading.Lock()
 _global_provisions: deque[float] = deque()
 _client_provisions: dict[str, deque[float]] = {}
 
@@ -77,8 +82,8 @@ def _prune(window: deque[float], cutoff: float) -> None:
         window.popleft()
 
 
-def check_demo_quota(client_key: str) -> None:
-    """Reject provisioning once either rolling-hour ceiling is reached.
+def reserve_demo_slot(client_key: str) -> float:
+    """Atomically claim a provisioning slot, or raise if a ceiling is reached.
 
     Each provision writes a user row, so an unthrottled endpoint is an easy way
     to bloat the database. The per-client ceiling is what keeps one visitor from
@@ -86,38 +91,58 @@ def check_demo_quota(client_key: str) -> None:
     global ceiling remains as a backstop. A single-process in-memory counter is
     enough for the deployment this feature targets.
 
-    Checking is separate from recording so that a provision which fails partway
-    through does not burn a slot -- see record_demo_provision.
+    The slot is claimed inside the same lock that checks the ceilings, so
+    concurrent requests cannot all pass the check before any of them counts.
+    Returns a reservation token to hand back to release_demo_slot if the
+    provision later fails, so a failed provision does not burn a slot.
     """
-    now = time.monotonic()
-    cutoff = now - THROTTLE_WINDOW_SECONDS
+    with _throttle_lock:
+        now = time.monotonic()
+        cutoff = now - THROTTLE_WINDOW_SECONDS
 
-    _prune(_global_provisions, cutoff)
+        _prune(_global_provisions, cutoff)
 
-    if len(_global_provisions) >= settings.DEMO_MAX_SESSIONS_PER_HOUR:
-        raise DemoThrottleError
-
-    client_window = _client_provisions.get(client_key)
-
-    if client_window is not None:
-        _prune(client_window, cutoff)
-
-        if len(client_window) >= settings.DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR:
+        if len(_global_provisions) >= settings.DEMO_MAX_SESSIONS_PER_HOUR:
             raise DemoThrottleError
 
+        client_window = _client_provisions.get(client_key)
 
-def record_demo_provision(client_key: str) -> None:
-    """Count a demo account that was actually created."""
-    now = time.monotonic()
-    cutoff = now - THROTTLE_WINDOW_SECONDS
+        if client_window is not None:
+            _prune(client_window, cutoff)
 
-    _global_provisions.append(now)
+            if len(client_window) >= settings.DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR:
+                raise DemoThrottleError
 
-    client_window = _client_provisions.setdefault(client_key, deque())
-    client_window.append(now)
+        _global_provisions.append(now)
+        _client_provisions.setdefault(client_key, deque()).append(now)
 
-    if len(_client_provisions) > CLIENT_TRACKING_LIMIT:
-        _evict_idle_clients(cutoff)
+        if len(_client_provisions) > CLIENT_TRACKING_LIMIT:
+            _evict_idle_clients(cutoff)
+
+        return now
+
+
+def release_demo_slot(client_key: str, reservation: float) -> None:
+    """Return a reserved slot after a provision that failed partway through.
+
+    The reservation may already have been pruned or evicted; that is fine.
+    """
+    with _throttle_lock:
+        try:
+            _global_provisions.remove(reservation)
+        except ValueError:
+            pass
+
+        client_window = _client_provisions.get(client_key)
+
+        if client_window is not None:
+            try:
+                client_window.remove(reservation)
+            except ValueError:
+                pass
+
+            if not client_window:
+                del _client_provisions[client_key]
 
 
 def _evict_idle_clients(cutoff: float) -> None:
@@ -132,8 +157,9 @@ def _evict_idle_clients(cutoff: float) -> None:
 
 def reset_throttle() -> None:
     """Clear both throttle windows. Used by tests."""
-    _global_provisions.clear()
-    _client_provisions.clear()
+    with _throttle_lock:
+        _global_provisions.clear()
+        _client_provisions.clear()
 
 
 def create_demo_user(db: Session) -> User:
@@ -212,9 +238,13 @@ def provision_demo_session(db: Session, client_key: str) -> Token:
 
     Raises DemoThrottleError when either hourly ceiling is reached.
     """
-    check_demo_quota(client_key)
+    reservation = reserve_demo_slot(client_key)
 
-    user = create_demo_user(db)
+    try:
+        user = create_demo_user(db)
+    except Exception:
+        release_demo_slot(client_key, reservation)
+        raise
 
     # create_user and create_song_sketch each commit, so the account exists
     # before it is seeded. Remove it if seeding fails rather than leaving an
@@ -224,9 +254,8 @@ def provision_demo_session(db: Session, client_key: str) -> Token:
     except Exception:
         db.rollback()
         crud_user.delete_user(db, user)
+        release_demo_slot(client_key, reservation)
         raise
-
-    record_demo_provision(client_key)
 
     access_token = create_access_token(
         subject=user.id,
