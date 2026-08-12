@@ -417,10 +417,13 @@ def generate_next_step_suggestions(
 
     return {
         "pitch_collection": pitch_collection,
+        # Degrees of the mode itself (tonic, fifth, second) so the notes are
+        # always inside the pitch collection -- locrian's fifth is b5, and a
+        # "Cb" tonic comes back with the collection's normalized spelling.
         "gravity_center": [
-            tonal_center,
-            get_note_at_interval(tonal_center, 7),
-            get_note_at_interval(tonal_center, 2),
+            pitch_collection[0],
+            pitch_collection[4],
+            pitch_collection[1],
         ],
         "suggested_chords": [
             {
