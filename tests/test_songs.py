@@ -222,3 +222,88 @@ async def test_next_step_suggestions_are_authenticated_and_deterministic(
         "secondary-dominant",
         "modal-interchange",
     ]
+
+
+async def test_next_step_suggestions_anchor_on_the_selected_chord(
+    client: AsyncClient,
+) -> None:
+    headers = await create_authenticated_user(client)
+
+    def chord(chord_id: int, root: str, start_beat: float, order_index: int) -> dict:
+        return {
+            "id": chord_id,
+            "order_index": order_index,
+            "root": root,
+            "quality": "maj7",
+            "chord_name": f"{root}maj7",
+            "notes": ["C", "E", "G", "B"],
+            "start_beat": start_beat,
+            "duration_beats": 4,
+            "parent_mode": "ionian",
+        }
+
+    async def request_suggestions(selected_chord_id: int | None) -> dict:
+        response = await client.post(
+            "/api/v1/suggestions/next-steps",
+            headers=headers,
+            json={
+                "master_tonal_center": "C",
+                "master_mode": "ionian",
+                "selected_chord_id": selected_chord_id,
+                "active_section": {
+                    "section_type": "A",
+                    "label": "Verse",
+                    "order_index": 0,
+                    "total_beats": 8,
+                    "chords": [
+                        chord(1, "C", 0, 0),
+                        chord(2, "E", 4, 1),
+                    ],
+                    "melodic_notes": [],
+                },
+            },
+        )
+        assert response.status_code == 200
+
+        return response.json()
+
+    # Selecting the first chord anchors on C (degree I), so next is Dm7.
+    anchored = await request_suggestions(selected_chord_id=1)
+    assert anchored["suggested_chords"][0]["chord_name"] == "Dm7"
+
+    # Without a selection the musically last chord (E, degree III) anchors.
+    unanchored = await request_suggestions(selected_chord_id=None)
+    assert unanchored["suggested_chords"][0]["chord_name"] == "Fmaj7"
+
+
+async def test_next_step_suggestions_use_flat_spellings_in_flat_modes(
+    client: AsyncClient,
+) -> None:
+    headers = await create_authenticated_user(client)
+
+    response = await client.post(
+        "/api/v1/suggestions/next-steps",
+        headers=headers,
+        json={
+            "master_tonal_center": "C",
+            "master_mode": "dorian",
+            "selected_chord_id": None,
+            "active_section": {
+                "section_type": "A",
+                "label": "Verse",
+                "order_index": 0,
+                "total_beats": 4,
+                "chords": [],
+                "melodic_notes": [],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pitch_collection"] == ["C", "D", "Eb", "F", "G", "A", "Bb"]
+    assert not any(
+        "#" in note
+        for suggestion in body["suggested_chords"]
+        for note in suggestion["notes"]
+    )
