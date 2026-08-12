@@ -1,7 +1,7 @@
-from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.chord import ChordBase, ChordRead
+from app.schemas.common import UTCDateTime
 from app.schemas.melodic_note import MelodicNoteBase, MelodicNoteRead
 from app.schemas.song_section import SongSectionBase, SongSectionRead
 from app.services.music_theory import is_valid_mode, is_valid_note
@@ -68,8 +68,8 @@ class SongSketchUpdate(BaseModel):
 class SongSketchRead(SongSketchBase):
     id: int
     user_id: int
-    created_at: datetime
-    updated_at: datetime | None = None
+    created_at: UTCDateTime
+    updated_at: UTCDateTime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

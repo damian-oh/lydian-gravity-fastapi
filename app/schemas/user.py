@@ -1,5 +1,6 @@
-from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.schemas.common import UTCDateTime
 
 
 class UserBase(BaseModel):
@@ -43,7 +44,7 @@ class UserPasswordUpdate(BaseModel):
 
 class UserRead(UserBase):
     id: int
-    created_at: datetime
+    created_at: UTCDateTime
     is_demo: bool
 
     model_config = ConfigDict(from_attributes=True)
