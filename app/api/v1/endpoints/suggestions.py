@@ -16,6 +16,7 @@ async def suggest_next_steps(
     result = generate_next_step_suggestions(
         tonal_center=suggestion_in.master_tonal_center,
         mode=suggestion_in.master_mode,
+        selected_chord_id=suggestion_in.selected_chord_id,
         chords=[
             {
                 "id": chord.id,

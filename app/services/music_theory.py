@@ -322,17 +322,38 @@ def generate_next_step_suggestions(
     tonal_center: str,
     mode: str,
     chords: list[dict],
+    selected_chord_id: int | None = None,
 ) -> dict[str, object]:
     pitch_collection = build_pitch_collection(tonal_center, mode)
     chromatic = get_preferred_chromatic(tonal_center, mode)
     diatonic_chords = build_mode_seventh_chords(tonal_center, mode)
-    active_chord = chords[-1] if chords else None
-    active_root = active_chord.get("root") if active_chord else tonal_center
+    active_chord = None
+    if selected_chord_id is not None:
+        active_chord = next(
+            (chord for chord in chords if chord.get("id") == selected_chord_id),
+            None,
+        )
+    if active_chord is None and chords:
+        # No explicit selection: anchor on the musically last chord, not on
+        # whatever order the client happened to send the array in.
+        active_chord = max(
+            chords,
+            key=lambda chord: (
+                chord.get("start_beat", 0.0),
+                chord.get("order_index", 0),
+            ),
+        )
+    active_root = active_chord.get("root") if active_chord else None
+    # Match by semitone rather than name so chords persisted with the other
+    # enharmonic spelling (e.g. a stored "D#" against a diatonic "Eb") still
+    # anchor on the right degree. An empty section leaves active_index at -1,
+    # which deterministically suggests the tonic chord below.
+    active_semitone = NOTE_TO_SEMITONE.get(active_root) if active_root else None
     active_index = next(
         (
             index
             for index, chord in enumerate(diatonic_chords)
-            if chord.root == active_root
+            if NOTE_TO_SEMITONE[chord.root] == active_semitone
         ),
         -1,
     )
