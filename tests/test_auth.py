@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator
 
@@ -77,6 +78,20 @@ async def login_user(
 
 def auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+@asynccontextmanager
+async def client_at(host: str) -> AsyncGenerator[AsyncClient, None]:
+    """A second client seen by the app as a different address.
+
+    It shares the get_db override the client fixture installed, so both
+    clients talk to the same database.
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=(host, 1234)),
+        base_url="http://test",
+    ) as other_client:
+        yield other_client
 
 
 async def test_register_stores_argon2_hash(client: AsyncClient) -> None:
@@ -287,3 +302,60 @@ async def test_update_current_user_rejects_explicit_null_email(
     )
 
     assert response.status_code == 422
+
+
+async def test_login_attempts_are_throttled_per_client(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "AUTH_LOGIN_MAX_ATTEMPTS_PER_WINDOW", 2)
+    assert (await register_user(client)).status_code == 201
+
+    assert (await login_user(client, password="wrong-password")).status_code == 401
+    assert (await login_user(client, password="wrong-password")).status_code == 401
+
+    throttled = await login_user(client, password="correct-password")
+
+    assert throttled.status_code == 429
+
+    # One visitor exhausting their own allowance must not lock out everyone else.
+    async with client_at("203.0.113.9") as other_visitor:
+        response = await other_visitor.post(
+            "/api/v1/auth/login",
+            data={"username": "user@example.com", "password": "correct-password"},
+        )
+
+    assert response.status_code == 200
+
+
+async def test_registration_attempts_are_throttled_per_client(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "AUTH_REGISTER_MAX_ATTEMPTS_PER_WINDOW", 1)
+
+    assert (await register_user(client, email="first@example.com")).status_code == 201
+
+    throttled = await register_user(client, email="second@example.com")
+
+    assert throttled.status_code == 429
+
+    # One visitor exhausting their own allowance must not lock out everyone else.
+    async with client_at("203.0.113.9") as other_visitor:
+        response = await other_visitor.post(
+            "/api/v1/auth/register",
+            json={"email": "third@example.com", "password": "correct-password"},
+        )
+
+    assert response.status_code == 201
+
+
+def test_throttle_key_tracking_stays_bounded() -> None:
+    from app.core.rate_limit import SlidingWindowThrottle
+
+    throttle = SlidingWindowThrottle(tracking_limit=10)
+
+    for index in range(25):
+        throttle.hit(f"flood-client-{index}", max_hits=5, window_seconds=3600)
+
+    assert len(throttle._hits) <= 10
+    # The newest key is never the one evicted.
+    assert "flood-client-24" in throttle._hits
