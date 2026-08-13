@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import SessionDep
 from app.core.config import settings
+from app.core.rate_limit import RateLimitExceeded, SlidingWindowThrottle
 from app.core.security import create_access_token
 from app.crud import crud_user
 from app.schemas.token import Token
@@ -15,14 +16,40 @@ from app.services.demo_service import DemoThrottleError
 
 router = APIRouter()
 
+# Per-client sliding-window throttles guarding login/register from brute-force
+# and registration spam. Same client_key derivation and reverse-proxy caveat as
+# demo_service's throttle -- see app/core/config.py.
+_login_throttle = SlidingWindowThrottle()
+_register_throttle = SlidingWindowThrottle()
+
+
+def reset_auth_throttles() -> None:
+    """Clear both throttles. Used by tests."""
+    _login_throttle.reset()
+    _register_throttle.reset()
+
 
 @router.post(
     "/register",
     response_model=UserRead,
     status_code=status.HTTP_201_CREATED,
 )
-def register_user(db: SessionDep, user_in: UserCreate) -> UserRead:
+def register_user(request: Request, db: SessionDep, user_in: UserCreate) -> UserRead:
     # def rather than async def: hashes a password (see create_demo_session).
+    client_key = request.client.host if request.client else "unknown"
+
+    try:
+        _register_throttle.hit(
+            client_key,
+            settings.AUTH_REGISTER_MAX_ATTEMPTS_PER_WINDOW,
+            settings.AUTH_REGISTER_WINDOW_SECONDS,
+        )
+    except RateLimitExceeded:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many registration attempts. Try again later.",
+        ) from None
+
     if crud_user.get_user_by_email(db, email=user_in.email) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -41,11 +68,26 @@ def register_user(db: SessionDep, user_in: UserCreate) -> UserRead:
 
 @router.post("/login", response_model=Token)
 def login_access_token(
+    request: Request,
     db: SessionDep,
     username: Annotated[str, Form()],
     password: Annotated[str, Form()],
 ) -> Token:
     # def rather than async def: verifies a password (see create_demo_session).
+    client_key = request.client.host if request.client else "unknown"
+
+    try:
+        _login_throttle.hit(
+            client_key,
+            settings.AUTH_LOGIN_MAX_ATTEMPTS_PER_WINDOW,
+            settings.AUTH_LOGIN_WINDOW_SECONDS,
+        )
+    except RateLimitExceeded:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again later.",
+        ) from None
+
     user = user_service.authenticate_user(
         db,
         email=username.strip().lower(),

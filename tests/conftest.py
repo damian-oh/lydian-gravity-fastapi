@@ -1,5 +1,5 @@
 import os
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Generator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -14,6 +14,7 @@ os.environ["SECRET_KEY"] = "test-secret-key-with-at-least-32-bytes"
 # may well be on. Tests that need it enable it explicitly.
 os.environ["DEMO_MODE"] = "False"
 
+from app.api.v1.endpoints import auth as auth_endpoints  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
@@ -22,6 +23,15 @@ from app.main import app  # noqa: E402
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def _reset_auth_throttles() -> Generator[None, None, None]:
+    """Every test's default client shares one address, so without a reset the
+    login/register throttles would accumulate hits across unrelated tests."""
+    auth_endpoints.reset_auth_throttles()
+    yield
+    auth_endpoints.reset_auth_throttles()
 
 
 @pytest.fixture

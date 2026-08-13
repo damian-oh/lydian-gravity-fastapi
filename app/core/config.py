@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # ceiling.
     DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR: int = 5
 
+    # Per-client login/register ceilings, keyed the same way (and subject to
+    # the same reverse-proxy caveat) as the demo-session ceiling above.
+    AUTH_LOGIN_MAX_ATTEMPTS_PER_WINDOW: int = 10
+    AUTH_LOGIN_WINDOW_SECONDS: int = 300
+    AUTH_REGISTER_MAX_ATTEMPTS_PER_WINDOW: int = 5
+    AUTH_REGISTER_WINDOW_SECONDS: int = 3600
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
