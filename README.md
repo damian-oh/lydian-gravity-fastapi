@@ -9,6 +9,19 @@ This repository powers authentication, persistence, and theory suggestion APIs
 for the companion Next.js client:
 [lydian-gravity-web](https://github.com/damian-oh/lydian-gravity-web).
 
+## Live Demo
+
+| | |
+| --- | --- |
+| Application | <https://lydiangravity.damianoh.com> |
+| API base | <https://api.lydiangravity.damianoh.com/api/v1> |
+| Interactive docs | <https://api.lydiangravity.damianoh.com/docs> |
+
+Demo mode is on, so the client can hand a visitor a working account without
+registration. The deployment is a showcase, not durable storage: it runs on a
+single free-tier instance with an ephemeral filesystem, so saved data resets
+when the instance restarts.
+
 ## Project Highlights
 
 - **Authenticated songwriting workspace:** Register, log in, update account
@@ -149,45 +162,20 @@ The test suite covers authentication, token rejection cases, CORS preflight
 behavior, user-scoped song access, nested arrangement saves, input validation,
 and deterministic suggestion responses.
 
-## Deployment Notes
+## Deployment
 
-Deploy this repo as a Python ASGI service on a host that supports Python 3.13
-and persistent disk storage.
+The service ships as a container. [`Dockerfile`](Dockerfile) builds it from
+`uv.lock`; [`render.yaml`](render.yaml) declares the hosted service, so its
+configuration lives in version control rather than in a dashboard. The image is
+host-agnostic — the blueprint is the only Render-specific file.
 
-Build command:
+Two constraints carry over to any host:
 
-```bash
-uv sync --locked --no-dev
-```
-
-Start command:
-
-```bash
-uv run fastapi run app/main.py --host 0.0.0.0 --port ${PORT:-8000}
-```
-
-Production checklist:
-
-- Set `DEBUG=False`.
-- Use a unique `SECRET_KEY`.
-- Store the SQLite database on persistent storage, such as `/data`.
-- Set `DATABASE_URL` to that persistent path, for example
-  `sqlite:////data/lydian_gravity.db`.
-- Set `BACKEND_CORS_ORIGINS` to the exact deployed frontend origins.
-- Back up the SQLite database file regularly.
-
-After deploy, verify:
-
-```bash
-curl https://api.example.com/
-curl https://api.example.com/api/v1/health
-```
-
-Expected health response:
-
-```json
-{"status":"ok"}
-```
+- **Run exactly one instance.** Rate-limit state is held in process memory and
+  the database is SQLite.
+- **Keep `--proxy-headers` in the start command.** Per-client ceilings key on
+  the client address; behind a proxy without it, every visitor shares one
+  bucket.
 
 ## Companion Project
 
