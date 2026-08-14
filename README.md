@@ -116,6 +116,14 @@ from `.env`.
 | `ALGORITHM` | No | Defaults to `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Defaults to `30` |
 | `BACKEND_CORS_ORIGINS` | No | JSON array of allowed frontend origins |
+| `DEMO_MODE` | No | Defaults to `False`. Enables throwaway demo sessions |
+| `DEMO_SESSION_EXPIRE_MINUTES` | No | Defaults to `720` |
+| `DEMO_MAX_SESSIONS_PER_HOUR` | No | Defaults to `60`, counted across all clients |
+| `DEMO_MAX_SESSIONS_PER_CLIENT_PER_HOUR` | No | Defaults to `5` |
+| `AUTH_LOGIN_MAX_ATTEMPTS_PER_WINDOW` | No | Defaults to `10` per client |
+| `AUTH_LOGIN_WINDOW_SECONDS` | No | Defaults to `300` |
+| `AUTH_REGISTER_MAX_ATTEMPTS_PER_WINDOW` | No | Defaults to `5` per client |
+| `AUTH_REGISTER_WINDOW_SECONDS` | No | Defaults to `3600` |
 
 Example local configuration:
 
