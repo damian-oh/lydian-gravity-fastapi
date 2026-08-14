@@ -1,0 +1,38 @@
+# Render Blueprint: keeps the service definition in version control instead of
+# as invisible dashboard state. Render reads this on "New -> Blueprint" and
+# redeploys on every push to the default branch.
+services:
+  - type: web
+    name: lydian-gravity-api
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: PROJECT_NAME
+        value: Lydian Gravity
+
+      - key: DEBUG
+        value: "False"
+
+      # Visitors can try the workspace without registering. Safe to leave on:
+      # demo sessions are throttled per client and never relax token
+      # validation -- see app/services/demo_service.py.
+      - key: DEMO_MODE
+        value: "True"
+
+      # Four slashes: three for the scheme, one for the absolute path. The free
+      # tier's filesystem is ephemeral, so this database is rebuilt from
+      # scratch by the lifespan hook on every restart and redeploy.
+      - key: DATABASE_URL
+        value: sqlite:////tmp/lydian_gravity.db
+
+      # sync: false -> Render prompts for these in the dashboard and they never
+      # enter git. SECRET_KEY must be a fresh `openssl rand -hex 32`, never the
+      # value from a local .env. BACKEND_CORS_ORIGINS is parsed as list[str],
+      # so it needs JSON array syntax: ["https://example.com"]
+      - key: SECRET_KEY
+        sync: false
+      - key: BACKEND_CORS_ORIGINS
+        sync: false

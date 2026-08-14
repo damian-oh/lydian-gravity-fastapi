@@ -1,0 +1,23 @@
+# Secrets and local data -- these must never reach a built image.
+.env
+.env.*
+!.env.example
+*.db
+
+# Virtualenv: the image builds its own from uv.lock.
+.venv/
+
+.git/
+.github/
+.gitignore
+
+tests/
+docs/
+scripts/
+README.md
+LICENSE
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
